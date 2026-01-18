@@ -10,7 +10,7 @@ on:
       key:
         description: 'Tu Public Key (La clave larga)'
         required: true
-      # Variables internas necesarias para evitar errores de "Unexpected value"
+      # Variables internas necesarias para evitar errores
       upload-artifact:
         description: 'Subir Archivo (Interno)'
         type: boolean
@@ -97,7 +97,7 @@ jobs:
         with:
           submodules: recursive
 
-      # --- INYECCION DE DATOS (VERSION POWERSHELL) ---
+      # --- INYECCION DE DATOS ---
       - name: Hardcode Server and Key
         shell: powershell
         run: |
@@ -127,18 +127,15 @@ jobs:
           Write-Output "Descargando jq 1.7.1..."
           Invoke-WebRequest -Uri "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe" -OutFile "jq.exe"
           
-          # Intentamos moverlo a la carpeta de Git (donde está bash) para asegurarnos que lo encuentra
+          # Intentamos moverlo a la carpeta de Git
           $gitPath = "C:\Program Files\Git\bin"
           
           if (Test-Path $gitPath) {
               Write-Output "Carpeta Git encontrada. Moviendo jq.exe a $gitPath..."
               Copy-Item -Path "jq.exe" -Destination "$gitPath\jq.exe" -Force
           } else {
-              Write-Error "❌ NO SE ENCUENTRA LA CARPETA DE GIT EN: $gitPath. ¿Dónde instalaste Git?"
-              # Si Git no está ahí, intentamos dejarlo en el PATH actual
-              $targetPath = "C:\Windows\System32\jq.exe"
-              Write-Output "Intentando mover a System32 como alternativa..."
-              Copy-Item -Path "jq.exe" -Destination $targetPath -Force
+              Write-Output "Usando System32 como alternativa..."
+              Copy-Item -Path "jq.exe" -Destination "C:\Windows\System32\jq.exe" -Force
           }
           
           Write-Output "Verificando instalación de jq..."
@@ -151,13 +148,36 @@ jobs:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
+      # --- CORRECCIÓN: Detección dinámica de ruta ---
       - name: Replace engine with rustdesk custom flutter engine
+        shell: powershell
         run: |
           flutter doctor -v
           flutter precache --windows
+          
+          # Descargar el motor personalizado
+          Write-Output "Descargando motor personalizado..."
           Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
-          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release
-          mv -Force windows-x64-release/* C:/hostedtoolcache/windows/flutter/stable-${{ env.FLUTTER_VERSION }}-x64/bin/cache/artifacts/engine/windows-x64-release/
+          Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release -Force
+          
+          # ENCONTRAR LA RUTA REAL DE FLUTTER
+          $flutterExe = (Get-Command flutter).Source
+          # Subimos dos niveles desde bin/flutter.bat para llegar a la raíz de Flutter
+          $flutterRoot = Split-Path (Split-Path $flutterExe)
+          
+          $targetPath = "$flutterRoot\bin\cache\artifacts\engine\windows-x64-release"
+          
+          Write-Output "Flutter detectado en: $flutterRoot"
+          Write-Output "Destino del motor: $targetPath"
+          
+          # Mover los archivos a la ruta detectada
+          if (Test-Path $targetPath) {
+              Move-Item -Path "windows-x64-release\*" -Destination $targetPath -Force
+              Write-Output "✅ Motor reemplazado con éxito."
+          } else {
+              Write-Error "❌ No se encontró la carpeta del motor en: $targetPath"
+              exit 1
+          }
 
       - name: Patch flutter
         shell: bash
