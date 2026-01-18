@@ -2,6 +2,14 @@ name: Build the flutter version of the RustDesk
 
 on:
   workflow_dispatch:
+    inputs:
+      host:
+        description: 'Tu Servidor (ej: rustdesk.midominio.com)'
+        required: true
+        default: '192.168.1.X'
+      key:
+        description: 'Tu Public Key (La clave larga)'
+        required: true
   workflow_call:
     inputs:
       upload-artifact:
