@@ -10,7 +10,7 @@ on:
       key:
         description: 'Tu Public Key (La clave larga)'
         required: true
-      # Variables internas necesarias para que no de error
+      # Variables internas necesarias para evitar errores
       upload-artifact:
         description: 'Subir Archivo (Interno)'
         type: boolean
@@ -97,18 +97,29 @@ jobs:
         with:
           submodules: recursive
 
-      # --- INYECCION DE DATOS ---
+      # --- INYECCION DE DATOS (VERSION POWERSHELL PARA WINDOWS) ---
       - name: Hardcode Server and Key
-        shell: bash
+        shell: powershell
         run: |
-          echo "Injecting Host: ${{ inputs.host }}"
-          # Cambiar el servidor por defecto
-          sed -i "s/rs-ny.rustdesk.com/${{ inputs.host }}/g" libs/hbb_common/src/config.rs
+          Write-Output "Injecting Host: ${{ inputs.host }}"
           
-          # Cambiar la Key por defecto
-          sed -i "s/pub const DEFAULT_RS_PUB_KEY: &str = \"\";/pub const DEFAULT_RS_PUB_KEY: &str = \"${{ inputs.key }}\";/g" libs/hbb_common/src/config.rs
+          $path = "libs/hbb_common/src/config.rs"
           
-          echo "✅ Servidor y Key inyectados correctamente."
+          # Leer el archivo
+          $txt = Get-Content $path -Raw
+          
+          # Reemplazar el Host
+          $txt = $txt -replace "rs-ny.rustdesk.com", "${{ inputs.host }}"
+          
+          # Reemplazar la Key (Buscamos la variable vacia y ponemos la tuya)
+          # Nota: Usamos comillas simples para el string de PowerShell para evitar conflictos
+          $txt = $txt -replace 'pub const DEFAULT_RS_PUB_KEY: &str = "";', 'pub const DEFAULT_RS_PUB_KEY: &str = "${{ inputs.key }}";'
+          
+          # Guardar el archivo modificado
+          Set-Content -Path $path -Value $txt -Encoding UTF8
+          
+          Write-Output "✅ Servidor y Key inyectados correctamente usando PowerShell."
+      # --- FIN BLOQUE DE INYECCION ---
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
@@ -224,7 +235,7 @@ jobs:
           else
             echo "Runner.res: $runner_res";
             cp $runner_res ./libs/portable/Runner.res;
-          fi
+            fi
 
       - name: Download RustDeskTempTopMostWindow artifacts
         uses: actions/download-artifact@master
@@ -239,6 +250,13 @@ jobs:
         with:
           name: rustdesk-unsigned-windows-${{ matrix.job.arch }}
           path: rustdesk
+
+      - name: Sign rustdesk files
+        if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
+        shell: bash
+        run: |
+          pip3 install requests argparse
+          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./rustdesk/
 
       - name: Build self-extracted executable
         shell: bash
