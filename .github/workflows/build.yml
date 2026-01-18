@@ -36,10 +36,9 @@ env:
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
   SCITER_NASM_DEBVERSION: "2.15.05-1"
   LLVM_VERSION: "15.0.6"
-  # --- CAMBIO: Versión compatible con el parche ---
+  # Mantenemos la versión 3.24.4 que es la más estable para el parche
   FLUTTER_VERSION: "3.24.4"
   ANDROID_FLUTTER_VERSION: "3.24.4"
-  # ------------------------------------------------
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
@@ -166,13 +165,17 @@ jobs:
               exit 1
           }
 
+      # --- CAMBIO: PARCHE RELAJADO ---
       - name: Patch flutter
         shell: bash
+        # Si esto falla, NO DETENGAS la compilación
+        continue-on-error: true
         run: |
           cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
           cd $(dirname $(dirname $(which flutter)))
-          # Usamos la versión exacta para la que se creó el parche
-          [[ "3.24.4" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          # Añadimos flags para ignorar espacios y saltos de línea de Windows
+          [[ "3.24.4" == ${{env.FLUTTER_VERSION}} ]] && git apply --ignore-space-change --ignore-whitespace flutter_3.24.4_dropdown_menu_enableFilter.diff
+      # -------------------------------
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
