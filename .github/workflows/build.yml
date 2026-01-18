@@ -10,7 +10,6 @@ on:
       key:
         description: 'Tu Public Key (La clave larga)'
         required: true
-      # Variables internas necesarias para evitar errores
       upload-artifact:
         description: 'Subir Archivo (Interno)'
         type: boolean
@@ -37,8 +36,10 @@ env:
   SCITER_ARMV7_CMAKE_VERSION: "3.29.7"
   SCITER_NASM_DEBVERSION: "2.15.05-1"
   LLVM_VERSION: "15.0.6"
-  FLUTTER_VERSION: "3.24.5"
-  ANDROID_FLUTTER_VERSION: "3.24.5"
+  # --- CAMBIO: Versión compatible con el parche ---
+  FLUTTER_VERSION: "3.24.4"
+  ANDROID_FLUTTER_VERSION: "3.24.4"
+  # ------------------------------------------------
   FLUTTER_ELINUX_VERSION: "3.16.9"
   TAG_NAME: "${{ inputs.upload-tag }}"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
@@ -52,11 +53,9 @@ env:
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
 
 jobs:
-  # 1. Generar el puente Rust-Flutter
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
 
-  # 2. Compilar herramienta auxiliar
   build-RustDeskTempTopMostWindow:
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
@@ -68,7 +67,6 @@ jobs:
     strategy:
       fail-fast: false
 
-  # 3. Compilación Principal (TU VM)
   build-for-windows-flutter:
     name: ${{ matrix.job.target }}
     needs: [build-RustDeskTempTopMostWindow, generate-bridge]
@@ -77,7 +75,6 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          # SOLO WINDOWS 64 BITS EN TU VM LOCAL
           - {
               target: x86_64-pc-windows-msvc,
               os: [self-hosted, vm-windows],
@@ -97,7 +94,6 @@ jobs:
         with:
           submodules: recursive
 
-      # --- INYECCION DE DATOS ---
       - name: Hardcode Server and Key
         shell: powershell
         run: |
@@ -120,7 +116,6 @@ jobs:
         with:
           version: ${{ env.LLVM_VERSION }}
 
-      # --- SOLUCIÓN AUTOMÁTICA PARA JQ ---
       - name: Force Install jq
         shell: powershell
         run: |
@@ -139,7 +134,6 @@ jobs:
           
           Write-Output "Verificando instalación de jq..."
           jq --version
-      # -------------------------------------
 
       - name: Install flutter
         uses: subosito/flutter-action@v2.12.0
@@ -147,7 +141,6 @@ jobs:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      # --- DETECCIÓN DINÁMICA DE RUTA ---
       - name: Replace engine with rustdesk custom flutter engine
         shell: powershell
         run: |
@@ -178,7 +171,8 @@ jobs:
         run: |
           cp .github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff $(dirname $(dirname $(which flutter)))
           cd $(dirname $(dirname $(which flutter)))
-          [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
+          # Usamos la versión exacta para la que se creó el parche
+          [[ "3.24.4" == ${{env.FLUTTER_VERSION}} ]] && git apply flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
@@ -187,7 +181,6 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
-      # --- CORRECCIÓN: CLAVE FIJA EN LUGAR DE LISTA ---
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: "windows-vm-custom"
