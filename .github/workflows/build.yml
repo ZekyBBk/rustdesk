@@ -127,7 +127,6 @@ jobs:
           Write-Output "Descargando jq 1.7.1..."
           Invoke-WebRequest -Uri "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe" -OutFile "jq.exe"
           
-          # Intentamos moverlo a la carpeta de Git
           $gitPath = "C:\Program Files\Git\bin"
           
           if (Test-Path $gitPath) {
@@ -148,29 +147,24 @@ jobs:
           channel: "stable"
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
-      # --- CORRECCIÓN: Detección dinámica de ruta ---
+      # --- DETECCIÓN DINÁMICA DE RUTA ---
       - name: Replace engine with rustdesk custom flutter engine
         shell: powershell
         run: |
           flutter doctor -v
           flutter precache --windows
           
-          # Descargar el motor personalizado
           Write-Output "Descargando motor personalizado..."
           Invoke-WebRequest -Uri https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip -OutFile windows-x64-release.zip
           Expand-Archive -Path windows-x64-release.zip -DestinationPath windows-x64-release -Force
           
-          # ENCONTRAR LA RUTA REAL DE FLUTTER
           $flutterExe = (Get-Command flutter).Source
-          # Subimos dos niveles desde bin/flutter.bat para llegar a la raíz de Flutter
           $flutterRoot = Split-Path (Split-Path $flutterExe)
-          
           $targetPath = "$flutterRoot\bin\cache\artifacts\engine\windows-x64-release"
           
           Write-Output "Flutter detectado en: $flutterRoot"
           Write-Output "Destino del motor: $targetPath"
           
-          # Mover los archivos a la ruta detectada
           if (Test-Path $targetPath) {
               Move-Item -Path "windows-x64-release\*" -Destination $targetPath -Force
               Write-Output "✅ Motor reemplazado con éxito."
@@ -193,9 +187,10 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
+      # --- CORRECCIÓN: CLAVE FIJA EN LUGAR DE LISTA ---
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: ${{ matrix.job.os }}
+          prefix-key: "windows-vm-custom"
 
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
