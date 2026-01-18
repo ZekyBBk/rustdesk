@@ -10,7 +10,7 @@ on:
       key:
         description: 'Tu Public Key (La clave larga)'
         required: true
-      # Variables internas necesarias para evitar errores
+      # Variables internas necesarias para evitar errores de "Unexpected value"
       upload-artifact:
         description: 'Subir Archivo (Interno)'
         type: boolean
@@ -97,29 +97,17 @@ jobs:
         with:
           submodules: recursive
 
-      # --- INYECCION DE DATOS (VERSION POWERSHELL PARA WINDOWS) ---
+      # --- INYECCION DE DATOS (VERSION POWERSHELL) ---
       - name: Hardcode Server and Key
         shell: powershell
         run: |
           Write-Output "Injecting Host: ${{ inputs.host }}"
-          
           $path = "libs/hbb_common/src/config.rs"
-          
-          # Leer el archivo
           $txt = Get-Content $path -Raw
-          
-          # Reemplazar el Host
           $txt = $txt -replace "rs-ny.rustdesk.com", "${{ inputs.host }}"
-          
-          # Reemplazar la Key (Buscamos la variable vacia y ponemos la tuya)
-          # Nota: Usamos comillas simples para el string de PowerShell para evitar conflictos
           $txt = $txt -replace 'pub const DEFAULT_RS_PUB_KEY: &str = "";', 'pub const DEFAULT_RS_PUB_KEY: &str = "${{ inputs.key }}";'
-          
-          # Guardar el archivo modificado
           Set-Content -Path $path -Value $txt -Encoding UTF8
-          
-          Write-Output "✅ Servidor y Key inyectados correctamente usando PowerShell."
-      # --- FIN BLOQUE DE INYECCION ---
+          Write-Output "✅ Servidor y Key inyectados correctamente."
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
@@ -131,6 +119,31 @@ jobs:
         uses: KyleMayes/install-llvm-action@v1
         with:
           version: ${{ env.LLVM_VERSION }}
+
+      # --- SOLUCIÓN AUTOMÁTICA PARA JQ ---
+      - name: Force Install jq
+        shell: powershell
+        run: |
+          Write-Output "Descargando jq 1.7.1..."
+          Invoke-WebRequest -Uri "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe" -OutFile "jq.exe"
+          
+          # Intentamos moverlo a la carpeta de Git (donde está bash) para asegurarnos que lo encuentra
+          $gitPath = "C:\Program Files\Git\bin"
+          
+          if (Test-Path $gitPath) {
+              Write-Output "Carpeta Git encontrada. Moviendo jq.exe a $gitPath..."
+              Copy-Item -Path "jq.exe" -Destination "$gitPath\jq.exe" -Force
+          } else {
+              Write-Error "❌ NO SE ENCUENTRA LA CARPETA DE GIT EN: $gitPath. ¿Dónde instalaste Git?"
+              # Si Git no está ahí, intentamos dejarlo en el PATH actual
+              $targetPath = "C:\Windows\System32\jq.exe"
+              Write-Output "Intentando mover a System32 como alternativa..."
+              Copy-Item -Path "jq.exe" -Destination $targetPath -Force
+          }
+          
+          Write-Output "Verificando instalación de jq..."
+          jq --version
+      # -------------------------------------
 
       - name: Install flutter
         uses: subosito/flutter-action@v2.12.0
@@ -212,14 +225,14 @@ jobs:
             $checksum_adapter = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*printer_driver_adapter\.zip$').Matches.Groups[1].Value
             $downloadsum_adapter = Get-FileHash -Path printer_driver_adapter.zip -Algorithm SHA256
             if ($checksum_driver -eq $downloadsum_driver.Hash -and $checksum_adapter -eq $downloadsum_adapter.Hash) {
-                Write-Output "Drivers checksum match."
+                Write-Output "Drivers OK."
                 Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
                 mkdir ./rustdesk/drivers
                 mv -Force .\rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
                 Expand-Archive printer_driver_adapter.zip -DestinationPath .
                 mv -Force .\printer_driver_adapter.dll ./rustdesk
             } else {
-                Write-Output "Checksum mismatch ignored for now."
+                Write-Output "Checksum mismatch ignored."
             }
           } catch {
               Write-Host "Ignore printer driver error."
@@ -235,7 +248,7 @@ jobs:
           else
             echo "Runner.res: $runner_res";
             cp $runner_res ./libs/portable/Runner.res;
-            fi
+          fi
 
       - name: Download RustDeskTempTopMostWindow artifacts
         uses: actions/download-artifact@master
